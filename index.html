@@ -1960,7 +1960,7 @@ document.title = (CFG_TITLE => CFG_TITLE)((window.NAEJEON_CONFIG && window.NAEJE
 const CFG = window.NAEJEON_CONFIG || {};
 let SB = null;
 function showLogin(msg = "") {
-  $("#loginBrand").innerHTML = `${ic("logo")}<span>${esc(CFG.siteName || "내전 매니저")}</span>`;
+  $("#loginBrand").innerHTML = `<span>${esc(CFG.siteName || "내전 매니저")}</span>`;
   $("#login").hidden = false; $("#loginErr").textContent = msg;
   loadCaptcha(); if (loginGuard.wait() > 0) showLock();
   setTimeout(() => $("#loginPw").focus(), 0);
