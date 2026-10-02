@@ -712,7 +712,7 @@ class SupaDB {
 }
 
 const app = {
-  DB: null, mode: "loading", canWrite: true, writeKnown: false, assets: null,
+  DB: null, mode: "loading", role: "admin", canWrite: true, writeKnown: false, assets: null,
   players: [], pmap: new Map(), hof: [], inquiries: [], scores: {}, st: { draft: {}, score: {}, settings: {}, notice: {}, rules: null, teams: {} },
   loaded: new Set(),
   route: "dashboard",
@@ -737,7 +737,7 @@ function onWriteError(e) {
   if (Date.now() - lastErrToast < 1500) return;
   lastErrToast = Date.now();
   if (code === "quota_exceeded") toast("저장 공간이 가득 찼습니다. 오래된 기록을 지운 뒤 다시 시도하세요");
-  else if (code === "invalid_argument") toast("편집 권한이 없습니다. 관리자 비밀번호로 로그인해야 합니다");
+  else if (code === "invalid_argument") toast(app.role === "host" ? "이 항목은 관리자만 바꿀 수 있습니다" : "편집 권한이 없습니다. 개최자나 관리자 비밀번호로 로그인해야 합니다");
   else if (code === "resource_exhausted") toast("요청이 너무 많습니다. 잠시 후 다시 시도하세요");
   else toast("저장하지 못했습니다. 연결을 확인하고 다시 시도하세요");
 }
@@ -900,9 +900,9 @@ const MENU = [
   ["streamers", "선수 목록", "user", false],
   ["tiers", "선수 티어표", "rank", true],
   ["inquiry", "문의 게시판", "mail", true],
-  ["settings", "설정", "gear", true],
+  ["settings", "설정", "gear", "admin"],
 ];
-const canSee = r => { const m = MENU.find(x => x[0] === r); return m && (!m[3] || app.canWrite); };
+const canSee = r => { const m = MENU.find(x => x[0] === r); if (!m) return false; if (m[3] === "admin") return app.canWrite && app.role === "admin"; return !m[3] || app.canWrite; };
 
 let pendingRender = false, dragging = false;
 function isEditing() {
@@ -927,7 +927,7 @@ function render() {
   $("#access").className = "access" + (app.canWrite ? " admin" : "");
   $("#access").innerHTML = app.mode === "local"
     ? `${ic("shield")}<span><b>미리보기 모드</b><br>이 브라우저에만 저장됨</span>`
-    : app.canWrite ? `${ic("shield")}<span><b>관리자</b> · 편집 가능</span>` : `${ic("eye")}<span><b>보기 전용</b></span>`;
+    : app.role === "admin" ? `${ic("shield")}<span><b>관리자</b> · 모든 권한</span>` : app.role === "host" ? `${ic("flag")}<span><b>개최자</b> · 경기 운영</span>` : `${ic("eye")}<span><b>보기 전용</b></span>`;
   const lo = $("#logoutBtn"); lo.hidden = app.mode !== "db"; lo.innerHTML = `${ic("ext")}<span>로그아웃</span>`;
 
   const page = PAGES[app.route];
@@ -1564,17 +1564,26 @@ PAGES.settings = {
         <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn gold" type="button" data-act="set-notice">${ic("send")}공지 게시 (모두에게 다시 표시)</button>${n.on ? `<button class="btn" type="button" data-act="set-notice-off">공지 끄기</button>` : ""}</div></div></section>
       <section class="panel"><div class="panel-head"><h3>${ic("shield")}접속 · 비밀번호</h3></div><div class="panel-body" style="display:grid;gap:14px;font-size:13.5px;line-height:1.7;max-width:760px">
         ${app.mode === "local" ? `<div class="notice-bar warn">지금은 <b>미리보기 모드</b>라서 이 브라우저에만 저장됩니다. <code>config.js</code>에 Supabase 주소와 키를 넣으면 비밀번호 로그인과 공유 저장이 켜집니다. (README 참고)</div>` : `
-        <div><b>공유 방법</b> — 아래 주소와 <b>보기용 비밀번호</b>를 볼 사람에게만 알려주세요. 운영을 같이 하는 사람에게는 관리자 비밀번호를 알려주면 됩니다.</div>
+        <div><b>공유 방법</b> — 아래 주소와 비밀번호를 필요한 사람에게만 알려주세요.</div>
         <div class="url-row"><code id="siteUrl">${esc(location.origin + location.pathname)}</code><button class="btn sm" type="button" data-act="copy-url">${ic("copy")}주소 복사</button></div>
-        <div>· <b>보기용 비밀번호</b>: 대시보드, 우승 기록, 선수 목록만 볼 수 있습니다.<br>· <b>관리자 비밀번호</b>: 모든 메뉴를 쓰고 편집할 수 있습니다.</div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>등급</th><th>할 수 있는 것</th><th>누구에게</th></tr></thead><tbody>
+          <tr><td><b>보기용</b></td><td>대시보드, 우승 기록, 선수 목록 보기</td><td class="muted">참가자, 시청자</td></tr>
+          <tr><td><b>개최자</b></td><td>설정을 뺀 모든 메뉴 (선수 등록, 참가 체크, 드래프트, 점수 입력, 내전 종료, 문의 답변)</td><td class="muted">내전을 여는 사람</td></tr>
+          <tr><td><b>관리자</b></td><td>모든 메뉴 + 설정 (사이트 이름, 공지, 비밀번호, 백업·복원)</td><td class="muted">사이트 주인만</td></tr>
+        </tbody></table></div>
         <div class="rule-card"><h4>보기용 비밀번호 바꾸기</h4>
           <div class="pw-grid"><label class="place-cell">새 비밀번호 (10자 이상)<input class="field sm" type="password" id="pwViewNew" autocomplete="new-password"></label><label class="place-cell">새 비밀번호 확인<input class="field sm" type="password" id="pwViewNew2" autocomplete="new-password"></label></div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn ghost sm" type="button" data-act="pw-gen" data-r="View">${ic("wand")}강력한 비밀번호 만들기</button><button class="btn gold sm" type="button" data-act="pw-viewer">${ic("save")}보기용 비밀번호 변경</button></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn ghost sm" type="button" data-act="pw-gen" data-r="View">${ic("wand")}강력한 비밀번호 만들기</button><button class="btn gold sm" type="button" data-act="pw-set" data-role="viewer">${ic("save")}보기용 비밀번호 변경</button></div>
           <span class="muted" style="font-size:12px">바꾸면 기존 비밀번호로 접속해 있던 사람은 모두 로그아웃됩니다.</span></div>
+        <div class="rule-card"><h4>개최자 비밀번호 바꾸기</h4>
+          <div class="pw-grid"><label class="place-cell">새 비밀번호 (10자 이상)<input class="field sm" type="password" id="pwHostNew" autocomplete="new-password"></label><label class="place-cell">새 비밀번호 확인<input class="field sm" type="password" id="pwHostNew2" autocomplete="new-password"></label></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn ghost sm" type="button" data-act="pw-gen" data-r="Host">${ic("wand")}강력한 비밀번호 만들기</button><button class="btn gold sm" type="button" data-act="pw-set" data-role="host">${ic("save")}개최자 비밀번호 변경</button></div>
+          <span class="muted" style="font-size:12px">바꾸면 기존 개최자 접속은 모두 로그아웃됩니다. 개최자를 그만둔 사람이 있으면 바로 바꾸세요.</span></div>
         <div class="rule-card"><h4>관리자 비밀번호 바꾸기</h4>
           <div class="pw-grid"><label class="place-cell">새 비밀번호 (10자 이상)<input class="field sm" type="password" id="pwAdminNew" autocomplete="new-password"></label><label class="place-cell">새 비밀번호 확인<input class="field sm" type="password" id="pwAdminNew2" autocomplete="new-password"></label></div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn ghost sm" type="button" data-act="pw-gen" data-r="Admin">${ic("wand")}강력한 비밀번호 만들기</button><button class="btn gold sm" type="button" data-act="pw-admin">${ic("save")}관리자 비밀번호 변경</button></div>
-          <span class="muted" style="font-size:12px">다른 곳에 로그인된 관리자는 모두 로그아웃됩니다(이 화면 포함, 새 비밀번호로 다시 로그인). 보기용과 다른 비밀번호를 쓰세요.</span></div>`}
+          <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn ghost sm" type="button" data-act="pw-gen" data-r="Admin">${ic("wand")}강력한 비밀번호 만들기</button><button class="btn gold sm" type="button" data-act="pw-set" data-role="admin">${ic("save")}관리자 비밀번호 변경</button></div>
+          <span class="muted" style="font-size:12px">다른 곳에 로그인된 관리자는 모두 로그아웃됩니다(이 화면 포함, 새 비밀번호로 다시 로그인).</span></div>
+        <span class="muted" style="font-size:12px">세 비밀번호는 모두 서로 달라야 합니다.</span>`}
       </div></section>
       <section class="panel"><div class="panel-head"><h3>${ic("save")}백업 · 복원</h3></div><div class="panel-body" style="display:grid;gap:10px;font-size:13.5px;max-width:760px">
         <span class="muted">선수, 티어, 점수, 우승 기록, 설정을 파일 하나로 내려받습니다. 내전이 끝날 때마다 받아두면 실수로 지우거나 누가 망가뜨려도 되돌릴 수 있습니다. 비밀번호는 백업에 들어가지 않습니다.</span>
@@ -1965,14 +1974,15 @@ function showLogin(msg = "") {
   loadCaptcha(); if (loginGuard.wait() > 0) showLock();
   setTimeout(() => $("#loginPw").focus(), 0);
 }
-async function isAdmin() {
-  try { const { data, error } = await SB.rpc("is_admin"); if (!error) return data === true; } catch {}
-  const { data } = await SB.auth.getUser(); return !!(data && data.user && data.user.email === CFG.adminEmail);
+async function myRole() {
+  try { const { data, error } = await SB.rpc("my_role"); if (!error && ["admin", "host", "viewer"].includes(data)) return data; } catch {}
+  const { data } = await SB.auth.getUser(); const em = data && data.user && data.user.email;
+  return em === CFG.adminEmail ? "admin" : em === CFG.hostEmail ? "host" : "viewer";
 }
 async function startWithSession() {
   $("#login").hidden = true;
   app.DB = new SupaDB(SB); app.mode = "db";
-  app.canWrite = await isAdmin(); app.writeKnown = true;
+  app.role = await myRole(); app.canWrite = app.role === "admin" || app.role === "host"; app.writeKnown = true;
   const h = (location.hash || "").replace("#", "");
   if (PAGES[h]) app.route = h; else if (h === "profile") app.route = "streamers";
   subscribe(); render();
@@ -2026,7 +2036,7 @@ $("#loginForm").addEventListener("submit", async e => {
   const pw = $("#loginPw").value; if (!pw) return;
   const btn = $("#loginBtn"); btn.disabled = true; btn.textContent = "확인 중…"; $("#loginErr").textContent = "";
   let ok = false, msg = "비밀번호가 맞지 않습니다";
-  for (const email of [CFG.viewerEmail, CFG.adminEmail].filter(Boolean)) {
+  for (const email of [CFG.viewerEmail, CFG.hostEmail, CFG.adminEmail].filter(Boolean)) {
     let token;
     try { token = await captchaToken(); } catch { msg = "보안 확인에 실패했습니다. 새로고침 후 다시 시도하세요"; break; }
     const { error } = await SB.auth.signInWithPassword({ email, password: pw, options: token ? { captchaToken: token } : undefined });
@@ -2064,18 +2074,19 @@ document.addEventListener("click", async e => {
     a.value = b.value = v; a.type = b.type = "text";
     toast("만든 비밀번호를 따로 적어둔 뒤 변경 버튼을 누르세요");
   }
-  if (act === "pw-admin" || act === "pw-viewer") {
-    const role = act === "pw-admin" ? "admin" : "viewer";
-    const a = $(role === "admin" ? "#pwAdminNew" : "#pwViewNew").value, b = $(role === "admin" ? "#pwAdminNew2" : "#pwViewNew2").value;
+  if (act === "pw-set") {
+    const role = el.dataset.role, R = { viewer: "View", host: "Host", admin: "Admin" }[role], NAME = { viewer: "보기용", host: "개최자", admin: "관리자" }[role];
+    if (!R) return;
+    const a = $(`#pw${R}New`).value, b = $(`#pw${R}New2`).value;
     const weak = weakReason(a); if (weak) return toast(weak);
     if (a !== b) return toast("새 비밀번호 두 칸이 서로 다릅니다");
-    if (!await confirmBox(role === "admin" ? "관리자 비밀번호를 바꿀까요?\n다른 곳에 로그인된 관리자는 모두 로그아웃됩니다." : "보기용 비밀번호를 바꿀까요?\n기존 비밀번호로 접속한 사람은 모두 로그아웃됩니다.", { ok: "바꾸기" })) return;
+    if (!await confirmBox(`${NAME} 비밀번호를 바꿀까요?\n기존 ${NAME} 비밀번호로 접속한 사람은 모두 로그아웃됩니다.`, { ok: "바꾸기" })) return;
     el.disabled = true;
     const { error } = await SB.rpc("set_member_password", { p_role: role, p_password: a });
     el.disabled = false;
-    if (error) return toast(/same/i.test(error.message) ? "보기용과 관리자 비밀번호는 서로 달라야 합니다" : /short|weak/i.test(error.message) ? "더 강한 비밀번호를 쓰세요 (10자 이상, 숫자만은 안 됨)" : "바꾸지 못했습니다. 관리자 비밀번호로 다시 로그인한 뒤 시도하세요");
-    $$("#pwAdminNew, #pwAdminNew2, #pwViewNew, #pwViewNew2").forEach(x => x.value = "");
-    toast(role === "admin" ? "관리자 비밀번호를 바꿨습니다" : "보기용 비밀번호를 바꿨습니다. 기존 접속자는 곧 로그아웃됩니다");
+    if (error) return toast(/same/i.test(error.message) ? "보기용·개최자·관리자 비밀번호는 서로 달라야 합니다" : /short|weak/i.test(error.message) ? "더 강한 비밀번호를 쓰세요 (10자 이상, 숫자만은 안 됨)" : /missing/i.test(error.message) ? `${NAME} 계정이 아직 없습니다. README의 계정 만들기를 확인하세요` : "바꾸지 못했습니다. 관리자 비밀번호로 다시 로그인한 뒤 시도하세요");
+    $$(`#pw${R}New, #pw${R}New2`).forEach(x => { x.value = ""; x.type = "password"; });
+    toast(`${NAME} 비밀번호를 바꿨습니다. 기존 접속자는 곧 로그아웃됩니다`);
   }
 });
 
