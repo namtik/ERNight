@@ -10,10 +10,11 @@ window.NAEJEON_CONFIG = {
   // Supabase에 만들 두 계정의 이메일 (supabase.sql 안의 이메일과 똑같아야 합니다)
   adminEmail: "admin@naejeon.app",
   viewerEmail: "viewer@naejeon.app",
+   hostEmail: "host@naejeon.app",
 
   // (선택) 로그인 보안 확인 — Cloudflare Turnstile 사이트 키. 비워두면 사용 안 함 (README 5단계)
   turnstileSiteKey: "",
 
   // 로그인 화면과 브라우저 탭에 보일 이름 (로그인 후에는 사이트 설정의 이름이 쓰입니다)
-  siteName: "내전 매니저",
+  siteName: "이리밤",
 };
