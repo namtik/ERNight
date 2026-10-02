@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://*.supabase.co wss://*.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'">
-<title>내전 매니저</title>
+<title>이리밤</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -608,12 +608,12 @@ class LocalDB {
   }
   doc(path) {
     const self = this, [c, id] = path.split("/");
-    const merge = (a, b) => { for (const k in b) { if (b[k] && typeof b[k] === "object" && !Array.isArray(b[k]) && a[k] && typeof a[k] === "object") merge(a[k], b[k]); else a[k] = b[k]; } return a; };
     return {
       id, path,
       get: async () => { const d = self.s[c]?.[id]; return { id, exists: !!d, data: () => d && JSON.parse(JSON.stringify(d)) }; },
       set: async d => { (self.s[c] ||= {})[id] = JSON.parse(JSON.stringify(d)); self._commit(); },
-      update: async d => { if (!self.s[c]?.[id]) throw { code: "invalid_argument", message: "missing" }; merge(self.s[c][id], JSON.parse(JSON.stringify(d))); self._commit(); },
+      update: async d => { if (!self.s[c]?.[id]) throw { code: "missing", message: "missing" }; deepMerge(self.s[c][id], JSON.parse(JSON.stringify(d))); self._commit(); },
+      merge: async d => { (self.s[c] ||= {}); self.s[c][id] = deepMerge(self.s[c][id] || {}, JSON.parse(JSON.stringify(d))); self._commit(); },
       delete: async () => { if (self.s[c]) delete self.s[c][id]; self._commit(); },
       onSnapshot(next) { const f = () => { const d = self.s[c]?.[id]; next({ id, exists: !!d, data: () => d && JSON.parse(JSON.stringify(d)) }); }; self.subs.add(f); setTimeout(f, 0); return () => self.subs.delete(f); },
     };
@@ -621,39 +621,63 @@ class LocalDB {
 }
 
 /* Supabase 저장소: docs(collection, id, data) 테이블 하나에 문서를 저장하고 실시간으로 받아옴 */
-const deepMerge = (a, b) => { for (const k in b) { if (b[k] && typeof b[k] === "object" && !Array.isArray(b[k]) && a[k] && typeof a[k] === "object" && !Array.isArray(a[k])) deepMerge(a[k], b[k]); else a[k] = b[k]; } return a; };
+// 바뀐 칸만 합치기 (null = 지우기). 서버의 jsonb_deep_merge 와 같은 규칙
+const isObj = v => v && typeof v === "object" && !Array.isArray(v);
+const deepMerge = (a, b) => {
+  for (const k in b) {
+    if (b[k] === null) delete a[k];
+    else if (isObj(b[k]) && isObj(a[k])) deepMerge(a[k], b[k]);
+    else a[k] = isObj(b[k]) ? stripNulls(b[k]) : b[k];
+  }
+  return a;
+};
+const stripNulls = o => { const r = {}; for (const k in o) if (o[k] !== null) r[k] = isObj(o[k]) ? stripNulls(o[k]) : o[k]; return r; };
 const clone = v => JSON.parse(JSON.stringify(v));
 function mapErr(e) {
   const msg = (e && e.message) || "";
   if (e && (e.code === "42501" || /row-level security|permission/i.test(msg))) return { code: "invalid_argument", message: msg };
   if (e && (e.code === "PGRST301" || /JWT|expired/i.test(msg))) return { code: "revoked", message: msg };
+  if (/^missing$/i.test(msg)) return { code: "missing", message: msg };
   return { code: (e && e.code) || "unavailable", message: msg };
 }
 const COLLECTIONS = ["players", "hof", "inquiries", "scores", "state"];
 const DOC_ID_RE = /^[A-Za-z0-9_.:@+~-]{1,100}$/;
 LocalDB.prototype.exportAll = async function () { const out = []; for (const c of COLLECTIONS) for (const [id, data] of Object.entries(this.s[c] || {})) out.push({ collection: c, id, data }); return out; };
-LocalDB.prototype.replaceAll = async function (docs) { this.s = {}; for (const d of docs) (this.s[d.collection] ||= {})[d.id] = d.data; this._commit(); };
+LocalDB.prototype.replaceAll = async function (docs) { const s = {}; for (const d of docs) (s[d.collection] ||= {})[d.id] = d.data; this.s = s; this._commit(); };
 class SupaDB {
-  constructor(sb) { this.sb = sb; this.cache = new Map(); this.listeners = new Map(); this.channel = null; }
+  constructor(sb) { this.sb = sb; this.cache = new Map(); this.listeners = new Map(); this.channel = null; this.loading = new Map(); this.reloadAfter = new Set(); }
   _emit(c) {
     const m = this.cache.get(c) || new Map();
     const docs = [...m.entries()].sort(([a], [b]) => a < b ? -1 : 1).map(([id, d]) => ({ id, exists: true, data: () => clone(d) }));
     const snap = { docs, size: docs.length, empty: !docs.length };
     (this.listeners.get(c) || []).forEach(f => f(snap));
   }
-  async _load(c) {
-    const { data, error } = await this.sb.from("docs").select("id,data").eq("collection", c).limit(5000);
-    if (error) throw mapErr(error);
-    this.cache.set(c, new Map(data.map(r => [r.id, r.data || {}])));
-    this._emit(c);
+  _load(c) {
+    // 같은 컬렉션을 동시에 두 번 불러오지 않음. 불러오는 중에 바뀐 게 있으면 끝난 뒤 한 번 더
+    if (this.loading.has(c)) { this.reloadAfter.add(c); return this.loading.get(c); }
+    const run = (async () => {
+      const rows = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await this.sb.from("docs").select("id,data").eq("collection", c).order("id").range(from, from + 999);
+        if (error) throw mapErr(error);
+        rows.push(...data); if (data.length < 1000) break;
+      }
+      this.cache.set(c, new Map(rows.map(r => [r.id, isObj(r.data) ? r.data : {}])));
+      this._emit(c);
+    })();
+    this.loading.set(c, run);
+    run.finally(() => { this.loading.delete(c); if (this.reloadAfter.delete(c)) this._load(c).catch(() => {}); }).catch(() => {});
+    return run;
   }
   _ensureChannel() {
     if (this.channel) return;
     this.channel = this.sb.channel("docs-live").on("postgres_changes", { event: "*", schema: "public", table: "docs" }, pl => {
       const row = (pl.new && pl.new.collection) ? pl.new : pl.old;
-      if (!row || !row.collection) return;
-      const m = this.cache.get(row.collection); if (!m) return;
-      if (pl.eventType === "DELETE") m.delete(row.id); else m.set(row.id, pl.new.data || {});
+      if (!row || !row.collection || !this.listeners.has(row.collection)) return;
+      const m = this.cache.get(row.collection);
+      // 아직 불러오는 중이거나 내용이 빠진 알림이면 통째로 다시 불러옴
+      if (!m || this.loading.has(row.collection) || (pl.eventType !== "DELETE" && !isObj(pl.new && pl.new.data))) { this._load(row.collection).catch(() => {}); return; }
+      if (pl.eventType === "DELETE") m.delete(row.id); else m.set(row.id, pl.new.data);
       this._emit(row.collection);
     }).subscribe();
   }
@@ -668,11 +692,16 @@ class SupaDB {
     return out;
   }
   async replaceAll(docs) {
-    const { error: de } = await this.sb.from("docs").delete().in("collection", COLLECTIONS);
-    if (de) throw mapErr(de);
+    // 1) 백업 내용을 먼저 덮어쓰고  2) 백업에 없는 항목만 지움 → 중간에 실패해도 데이터가 통째로 사라지지 않음
     for (let i = 0; i < docs.length; i += 200) {
       const chunk = docs.slice(i, i + 200).map(d => ({ collection: d.collection, id: d.id, data: d.data, updated_at: new Date().toISOString() }));
       const { error } = await this.sb.from("docs").upsert(chunk);
+      if (error) throw mapErr(error);
+    }
+    const keepKeys = new Set(docs.map(d => d.collection + "/" + d.id));
+    const extras = (await this.exportAll()).filter(d => !keepKeys.has(d.collection + "/" + d.id));
+    for (const d of extras) {
+      const { error } = await this.sb.from("docs").delete().eq("collection", d.collection).eq("id", d.id);
       if (error) throw mapErr(error);
     }
     this.refresh();
@@ -698,10 +727,17 @@ class SupaDB {
       if (!this.cache.has(c)) this.cache.set(c, new Map());
       this.cache.get(c).set(id, clone(d)); this._emit(c);
     };
+    const merge = async (d, upsert) => {
+      const { data, error } = await this.sb.rpc("merge_doc", { p_collection: c, p_id: id, p_patch: d, p_upsert: upsert });
+      if (error) throw mapErr(error);
+      if (!this.cache.has(c)) this.cache.set(c, new Map());
+      this.cache.get(c).set(id, isObj(data) ? data : {}); this._emit(c);
+    };
     return {
       id, path,
       set: d => put(d),
-      update: async d => { const cur = this.cache.get(c) && this.cache.get(c).get(id); if (!cur) throw { code: "invalid_argument", message: "missing" }; return put(deepMerge(clone(cur), d)); },
+      update: d => merge(d, false),   // 있는 문서만 (지워진 선수가 되살아나지 않게)
+      merge: d => merge(d, true),     // 없으면 새로 만듦
       delete: async () => {
         const { error } = await this.sb.from("docs").delete().eq("collection", c).eq("id", id);
         if (error) throw mapErr(error);
@@ -725,6 +761,7 @@ function write(path, op, data) {
     const ref = app.DB.doc(path);
     if (op === "set") return ref.set(data);
     if (op === "update") return ref.update(data);
+    if (op === "merge") return ref.merge(data);
     return ref.delete();
   });
   writeQueues.set(path, p);
@@ -739,6 +776,8 @@ function onWriteError(e) {
   if (code === "quota_exceeded") toast("저장 공간이 가득 찼습니다. 오래된 기록을 지운 뒤 다시 시도하세요");
   else if (code === "invalid_argument") toast(app.role === "host" ? "이 항목은 관리자만 바꿀 수 있습니다" : "편집 권한이 없습니다. 개최자나 관리자 비밀번호로 로그인해야 합니다");
   else if (code === "resource_exhausted") toast("요청이 너무 많습니다. 잠시 후 다시 시도하세요");
+  else if (code === "missing") toast("다른 운영자가 이미 지운 항목입니다");
+  else if (code === "revoked") toast("로그인이 끝났습니다. 다시 로그인해 주세요");
   else toast("저장하지 못했습니다. 연결을 확인하고 다시 시도하세요");
 }
 // 여러 문서를 차례로 저장 (동시 쓰기 제한 회피)
@@ -935,8 +974,8 @@ function render() {
   $("#pageTitle").innerHTML = page.title();
   $("#pageControls").innerHTML = page.controls ? page.controls() : "";
   const demo = app.players.some(x => x.demo) || app.hof.some(x => x.demo);
-  $("#view").innerHTML = (app.mode === "loading" ? `<div class="empty">불러오는 중…</div>` :
-    (demo && app.route !== "settings" ? `<div class="notice-bar">${ic("wand")}<span>예시 데이터가 들어 있습니다. 실제로 쓰기 전에 ${app.canWrite ? `<button class="btn sm" type="button" data-act="nav" data-r="settings">설정</button>에서 ` : "관리자가 설정에서 "}지워주세요.</span></div>` : "") + page.view());
+  $("#view").innerHTML = (app.mode === "loading" || (app.mode === "db" && !app.loaded.has("players")) ? `<div class="empty">불러오는 중…</div>` :
+    (demo && app.route !== "settings" ? `<div class="notice-bar">${ic("wand")}<span>예시 데이터가 들어 있습니다. 실제로 쓰기 전에 ${app.role === "admin" && app.canWrite ? `<button class="btn sm" type="button" data-act="nav" data-r="settings">설정</button>에서 ` : "관리자가 설정에서 "}지워주세요.</span></div>` : "") + page.view());
   page.after && page.after();
   restoreKept();
   restoreFocus(focus);
@@ -1308,22 +1347,17 @@ function rulesEditor() {
 const editRules = () => (rulesDraft ||= JSON.parse(JSON.stringify(rules())));
 function setField(team, f, raw) {
   const R = String(scoreUI.round);
-  const cur = JSON.parse(JSON.stringify(teamScores(team)));
-  let e = cur[R];
-  if (!e || typeof e !== "object") e = {};
   const v = raw === "" ? 0 : Math.max(0, Math.floor(Number(raw)));
   if (!Number.isFinite(v)) return;
-  if (f === "rank") { if (v) e.rank = v; else delete e.rank; }
-  else if (f === "kills") { if (v) e.kills = v; else delete e.kills; }
-  else {
-    const bucket = f.startsWith("o-") ? "obj" : "pen", key = f.slice(2);
-    e[bucket] = { ...(e[bucket] || {}) };
-    if (v) e[bucket][key] = v; else delete e[bucket][key];
-    if (!Object.keys(e[bucket]).length) delete e[bucket];
-  }
-  if (Object.keys(e).length) cur[R] = e; else delete cur[R];
+  // 바뀐 칸 하나만 보냄 → 여러 사람이 다른 칸을 동시에 입력해도 서로 덮어쓰지 않음
+  let patch;
+  if (f === "rank") patch = { rank: v || null };
+  else if (f === "kills") patch = { kills: v || null };
+  else patch = { [f.startsWith("o-") ? "obj" : "pen"]: { [f.slice(2)]: v || null } };
+  const cur = JSON.parse(JSON.stringify(teamScores(team)));
+  cur[R] = deepMerge(isObj(cur[R]) ? cur[R] : {}, JSON.parse(JSON.stringify(patch)));
   app.scores["t" + team] = cur;
-  write("scores/t" + team, "set", { r: cur });
+  write("scores/t" + team, "merge", { r: { [R]: patch } });
 }
 async function finalize() {
   const rank = standings();
@@ -1342,7 +1376,7 @@ async function finalize() {
 }
 async function resetScores() {
   const ops = Object.keys(app.scores).map(id => ["scores/" + id, "delete"]);
-  ops.push(["state/score", "set", { ...app.st.score, rounds: 3 }]);
+  ops.push(["state/score", "merge", { rounds: 3 }]);
   app.scores = {}; scoreUI.round = 1;
   await writeMany(ops);
   toast("점수를 초기화했습니다");
@@ -1703,7 +1737,7 @@ document.addEventListener("click", async e => {
       const p = app.pmap.get(id); if (!p || !app.canWrite) return;
       const status = p.status === "present" ? "absent" : "present";
       p.status = status; render();
-      write("players/" + id, "update", { status });
+      if (!await write("players/" + id, "update", { status })) app.DB.refresh && app.DB.refresh();
       break;
     }
     case "att-all-out": case "att-all-in": {
@@ -1712,7 +1746,7 @@ document.addEventListener("click", async e => {
       if (!targets.length) return;
       if (!await confirmBox(`${targets.length}명을 모두 ${to === "present" ? "참가" : "불참"}로 바꿀까요?`, { ok: to === "present" ? "전체 참가" : "전체 불참", danger: to === "absent" })) return;
       targets.forEach(p => p.status = to); render();
-      await writeMany(targets.map(p => ["players/" + p.id, "update", { status: to }]));
+      if (await writeMany(targets.map(p => ["players/" + p.id, "update", { status: to }])) < targets.length && app.DB.refresh) app.DB.refresh();
       break;
     }
 
@@ -1739,7 +1773,7 @@ document.addEventListener("click", async e => {
     case "to-pool": e.stopPropagation(); moveTo(id, null); if (draft.sel === id) draft.sel = null; render(); break;
     case "desel": draft.sel = null; render(); break;
 
-    case "round-add": { const n = roundCount() + 1; app.st.score = { ...app.st.score, rounds: n }; write("state/score", "set", app.st.score); scoreUI.round = n; render(); break; }
+    case "round-add": { const n = roundCount() + 1; app.st.score = { ...app.st.score, rounds: n }; write("state/score", "merge", { rounds: n }); scoreUI.round = n; render(); break; }
     case "team-rename": {
       e.stopPropagation();
       const n = Number(el.dataset.team);
@@ -1751,7 +1785,7 @@ document.addEventListener("click", async e => {
       if (Object.entries(names).some(([k, x]) => k !== String(n) && x === v && v)) { toast("다른 팀과 같은 이름입니다"); return; }
       app.st.teams = { ...(app.st.teams || {}), names };
       render();
-      if (await write("state/teams", "set", app.st.teams)) toast(v ? `팀 이름을 '${v}'(으)로 바꿨습니다` : `기본 이름으로 되돌렸습니다`);
+      if (await write("state/teams", "merge", { names: { [n]: v || null } })) toast(v ? `팀 이름을 '${v}'(으)로 바꿨습니다` : `기본 이름으로 되돌렸습니다`);
       break;
     }
     case "round-sel": scoreUI.round = Number(el.dataset.r); render(); break;
@@ -1760,9 +1794,9 @@ document.addEventListener("click", async e => {
       const used = Object.values(app.scores).some(r => r && r[last] != null);
       if (used && !await confirmBox(`R${last}에 입력한 점수를 지우고 라운드를 삭제할까요?`, { ok: "삭제", danger: true })) return;
       const ops = [];
-      for (const [id, r] of Object.entries(app.scores)) if (r && r[last] != null) { const c = { ...r }; delete c[last]; app.scores[id] = c; ops.push(["scores/" + id, "set", { r: c }]); }
+      for (const [id, r] of Object.entries(app.scores)) if (r && r[last] != null) { const c = { ...r }; delete c[last]; app.scores[id] = c; ops.push(["scores/" + id, "merge", { r: { [last]: null } }]); }
       app.st.score = { ...app.st.score, rounds: last - 1 };
-      ops.push(["state/score", "set", app.st.score]);
+      ops.push(["state/score", "merge", { rounds: last - 1 }]);
       if (scoreUI.round >= last) scoreUI.round = last - 1;
       render(); await writeMany(ops); break;
     }
@@ -1821,7 +1855,7 @@ document.addEventListener("click", async e => {
       const brand = $("#setBrand").value.trim(); $("#setBrand").blur();
       const icon = setUI.icon !== undefined ? setUI.icon : (app.st.settings.icon || "");
       const next = { ...app.st.settings, brand, icon };
-      if (await write("state/settings", "set", next)) { app.st.settings = next; setUI.icon = undefined; delete keep.setBrand; render(); toast("저장했습니다"); }
+      if (await write("state/settings", "merge", { brand, icon })) { app.st.settings = next; setUI.icon = undefined; delete keep.setBrand; render(); toast("저장했습니다"); }
       break;
     }
     case "set-icon": setUI.icon = el.dataset.v; render(); break;
@@ -1832,7 +1866,7 @@ document.addEventListener("click", async e => {
       if (await write("state/notice", "set", { text, on: true, version })) toast("공지를 게시했습니다. 다른 사람이 접속하면 팝업으로 보입니다");
       break;
     }
-    case "set-notice-off": if (await write("state/notice", "set", { ...app.st.notice, on: false })) toast("공지를 껐습니다"); break;
+    case "set-notice-off": if (await write("state/notice", "merge", { on: false })) toast("공지를 껐습니다"); break;
     case "demo-load": loadDemo(); break;
     case "backup-export": exportBackup(); break;
     case "demo-clear": if (await confirmBox("예시 선수와 예시 우승 기록을 모두 지울까요?", { ok: "지우기", danger: true })) clearDemo(); break;
@@ -1864,8 +1898,8 @@ document.addEventListener("change", e => {
   }
   const k = t.dataset.ch; if (!k) return;
   if (k === "sc") { setField(t.dataset.team, t.dataset.f, t.value); render(); }
-  if (k === "cpOn") { const v = { ...app.st.score, cpOn: t.checked, cpTarget: Number(app.st.score.cpTarget ?? 50) }; app.st.score = v; write("state/score", "set", v); render(); }
-  if (k === "cpTarget") { const v = { ...app.st.score, cpTarget: Number(t.value) || 0 }; app.st.score = v; write("state/score", "set", v); render(); }
+  if (k === "cpOn") { const patch = { cpOn: t.checked, cpTarget: Number(app.st.score.cpTarget ?? 50) }; app.st.score = { ...app.st.score, ...patch }; write("state/score", "merge", patch); render(); }
+  if (k === "cpTarget") { const patch = { cpTarget: Number(t.value) || 0 }; app.st.score = { ...app.st.score, ...patch }; write("state/score", "merge", patch); render(); }
   if (k === "photo") uploadPhoto(t.files && t.files[0]);
   if (k === "brandimg") loadBrandImage(t.files && t.files[0]);
   if (k === "backup") { const f = t.files && t.files[0]; t.value = ""; importBackup(f); }
@@ -1970,7 +2004,7 @@ const CFG = window.NAEJEON_CONFIG || {};
 let SB = null;
 function showLogin(msg = "") {
   $("#loginBrand").innerHTML = `<span>${esc(CFG.siteName || "내전 매니저")}</span>`;
-  $("#login").hidden = false; $("#loginErr").textContent = msg;
+  $("#login").hidden = false; $("#loginErr").textContent = msg; $(".app").hidden = true;
   loadCaptcha(); if (loginGuard.wait() > 0) showLock();
   setTimeout(() => $("#loginPw").focus(), 0);
 }
@@ -1980,7 +2014,7 @@ async function myRole() {
   return em === CFG.adminEmail ? "admin" : em === CFG.hostEmail ? "host" : "viewer";
 }
 async function startWithSession() {
-  $("#login").hidden = true;
+  $("#login").hidden = true; $(".app").hidden = false;
   app.DB = new SupaDB(SB); app.mode = "db";
   app.role = await myRole(); app.canWrite = app.role === "admin" || app.role === "host"; app.writeKnown = true;
   const h = (location.hash || "").replace("#", "");
@@ -1988,6 +2022,15 @@ async function startWithSession() {
   subscribe(); render();
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") app.DB.refresh(); });
   setInterval(() => app.DB.refresh(), 60000);
+  // 비밀번호가 바뀌어 세션이 끊겼는지 1분마다 확인 → 끊겼으면 로그인 화면으로
+  setInterval(async () => {
+    try {
+      const { error } = await SB.auth.getUser();
+      if (error && (error.status === 401 || error.status === 403 || /session|not.?found|jwt|expired/i.test((error.code || "") + " " + (error.message || "")))) {
+        await SB.auth.signOut({ scope: "local" }).catch(() => {}); location.reload();
+      }
+    } catch {}
+  }, 60000);
 }
 /* ── 로그인 보호: 연속 실패 시 대기, (선택) Cloudflare Turnstile 보안 확인 ── */
 const loginGuard = {
@@ -2066,7 +2109,8 @@ function weakReason(pw) {
 document.addEventListener("click", async e => {
   const el = e.target.closest("[data-act]"); if (!el) return;
   const act = el.dataset.act;
-  if (act === "logout") { await SB.auth.signOut(); location.reload(); }
+  // 같은 등급 사람들이 계정을 같이 쓰므로, 이 브라우저만 로그아웃 (기본값 global 은 모두를 내보냄)
+  if (act === "logout") { await SB.auth.signOut({ scope: "local" }); location.reload(); }
   if (act === "copy-url") copyText(location.origin + location.pathname);
   if (act === "pw-gen") {
     const r = el.dataset.r, v = strongPassword();
