@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://*.supabase.co wss://*.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'">
-<title>이리밤</title>
+<title>내전 매니저</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -207,13 +207,14 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .chip.dragging { opacity: .4; }
 .chip.swap { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
 .chip.sel { border-color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 0 2px var(--accent); }
+.ig-sub { display: block; font-size: 11px; font-weight: 600; line-height: 1.2; color: var(--text-muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip .nm { font-weight: 800; font-size: 12.5px; line-height: 1.25; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip .meta { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
 .chip .x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: transparent; color: var(--text-muted); display: grid; place-items: center; cursor: pointer; padding: 0; }
 .chip .x:hover { color: var(--danger); background: var(--danger-dim); }
 .chip .x .ic { width: 12px; height: 12px; }
 .pool { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; position: sticky; top: 96px; max-height: calc(100vh - 116px); display: flex; flex-direction: column; }
-.pool-scroll { overflow-y: auto; padding: 12px; display: grid; gap: 10px; }
+.pool-scroll { overflow-y: auto; padding: 12px; display: grid; gap: 10px; grid-auto-rows: max-content; align-content: start; flex: 1 1 auto; min-height: 0; }
 .tier-box { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .tier-box-head { padding: 6px 10px; font-size: 12px; font-weight: 900; background: color-mix(in srgb, var(--tc) 18%, var(--bg-panel)); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
 .tier-box-head .tb { font-size: 10.5px; }
@@ -229,13 +230,14 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tier-label small { font-size: 11px; font-weight: 800; background: rgba(0, 0, 0, .18); padding: 1px 8px; border-radius: 10px; }
 .tier-body { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; align-content: flex-start; transition: background-color .15s; cursor: default; }
 .tier-body.over, .tier-body.target { background: var(--accent-dim); }
-.pcard { display: flex; align-items: center; gap: 8px; padding: 5px 10px 5px 5px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-details); cursor: grab; user-select: none; font-weight: 700; font-size: 13px; max-width: 100%; }
+.pcard { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-details); cursor: grab; user-select: none; font-weight: 700; font-size: 13px; max-width: 100%; }
 .pcard:hover { border-color: var(--accent); }
 .pcard.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: var(--accent-dim); }
 .pcard.changed { border-style: dashed; border-color: var(--accent); }
 .pcard.dragging { opacity: .4; }
 .pcard .av { width: 28px; height: 28px; font-size: 12px; border-width: 1px; }
 .pcard span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard .pc-nm { display: grid; min-width: 0; line-height: 1.2; }
 .side-stack { display: grid; gap: 14px; position: sticky; top: 96px; }
 .add-row { display: flex; gap: 8px; }
 .add-row .field { flex: 1; min-width: 0; }
@@ -357,6 +359,8 @@ th.pen .ptag { color: var(--danger); }
 @media (prefers-reduced-motion: reduce) { .st-card { transition: none; } .st-card:hover { transform: none; } }
 .st-card .av { width: 82px; height: 82px; font-size: 30px; }
 .st-card .tb { position: absolute; top: 12px; right: 12px; }
+.st-card .st-main:not(:has(.av)) { padding-top: 18px; }
+.st-card .st-main:not(:has(.av)) .tb { position: static; }
 .st-name { font-weight: 900; font-size: 16px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-ig { font-size: 12.5px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; max-width: 100%; }
 .st-ig span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -396,6 +400,7 @@ th.pen .ptag { color: var(--danger); }
 .modal-foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); }
 .modal-foot .spacer { flex: 1; }
 .prof-top { display: flex; align-items: center; gap: 18px; }
+.prof-ig { margin: -2px 0 8px; font-size: 14px; font-weight: 600; color: var(--text-muted); overflow-wrap: anywhere; }
 .prof-top h2 { margin: 0 0 6px; font-size: 24px; font-weight: 900; }
 .prof-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .prof-stat { background: var(--bg-details); border: 1px solid var(--border); border-radius: 10px; padding: 12px 8px; text-align: center; }
@@ -679,9 +684,13 @@ class SupaDB {
       if (!m || this.loading.has(row.collection) || (pl.eventType !== "DELETE" && !isObj(pl.new && pl.new.data))) { this._load(row.collection).catch(() => {}); return; }
       if (pl.eventType === "DELETE") m.delete(row.id); else m.set(row.id, pl.new.data);
       this._emit(row.collection);
-    }).subscribe();
+    }).subscribe(status => {
+      // 실시간 연결이 끊겼다가 다시 붙으면, 끊긴 동안 놓친 변경을 한 번 받아옴
+      if (status === "SUBSCRIBED") { if (this.wasDown) { this.wasDown = false; this.refresh(); } }
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") this.wasDown = true;
+    });
   }
-  refresh() { for (const c of this.listeners.keys()) this._load(c).catch(() => {}); }
+  refresh() { this.lastRefresh = Date.now(); for (const c of this.listeners.keys()) this._load(c).catch(() => {}); }
   async exportAll() {
     const out = [];
     for (let from = 0; ; from += 1000) {
@@ -877,6 +886,9 @@ function standings() {
   list.sort((a, b) => b.total - a.total || a.id - b.id);
   return list;
 }
+// 인게임 닉네임이 선수 닉네임과 다를 때만 이름 아래에 작게 표시
+const igOf = p => { const g = String((p && p.ingame) || "").trim(); return g && g !== String(p.name || "").trim() ? g : ""; };
+const igSub = p => igOf(p) ? `<span class="ig-sub" title="인게임 닉네임">${esc(igOf(p))}</span>` : "";
 const memberNames = members => members.map(m => m.name).join(", ");
 
 // 기록 통계 (명예의 전당 상세 순위 기반)
@@ -902,9 +914,8 @@ const statFor = (stats, p) => stats.get(p.id) || stats.get("name:" + p.name) || 
 function avatar(p, cls = "", tierKey) {
   const name = p ? (p.name || "?") : "?";
   if (p && p.imageId) return `<span class="av ${cls}"><img src="/_blob/${esc(p.imageId)}" alt="" loading="lazy"></span>`;
-  // 사진이 없으면 티어 색 동그라미에 닉네임 첫 글자
-  const t = tierKey !== undefined ? (TIER[tierKey] || UNR) : tierOf(p);
-  return `<span class="av tinted ${cls}" style="--tc:${t.c};--tk:${t.ink}" aria-hidden="true">${esc([...name][0] || "?")}</span>`;
+  // 사진이 없으면 아무것도 표시하지 않음 (예전: 닉네임 첫 글자 동그라미)
+  return "";
 }
 const playerByKey = (id, name) => (id && app.pmap.get(id)) || app.players.find(p => p.name === name) || { name };
 
@@ -979,6 +990,8 @@ function render() {
   page.after && page.after();
   restoreKept();
   restoreFocus(focus);
+  // 파일 선택 창이 열려 있는 동안 다른 사람의 변경으로 화면이 다시 그려져도 고른 파일이 처리되게
+  $$("input[type=file][data-ch]").forEach(el => el.addEventListener("change", ev => { if (!el.isConnected) onChange(ev); }));
 }
 function captureFocus() {
   const a = document.activeElement;
@@ -1121,7 +1134,7 @@ PAGES.attendance = {
         <div class="att-col-head"><h3>${type === "in" ? `${ic("check")}참가` : `${ic("minus")}불참`}</h3><span class="cnt">${rows.length}</span></div>
         ${groups.map(g => `<div class="att-group"><div class="att-group-head">${tierBadge({ tier: g.t.k })}<span class="line"></span><span class="num">${g.ps.length}</span></div>
           ${g.ps.length ? `<div class="att-grid">${g.ps.map(p => `<button type="button" class="att-card" data-act="att-toggle" data-id="${esc(p.id)}"${app.canWrite ? "" : " disabled"} aria-label="${esc(p.name)} ${type === "in" ? "불참으로 변경" : "참가로 변경"}">
-            <span class="att-left">${avatar(p, "sm")}<span class="info"><span class="nm">${esc(p.name)}</span></span></span>
+            <span class="att-left">${avatar(p, "sm")}<span class="info"><span class="nm">${esc(p.name)}</span>${igSub(p)}</span></span>
             <span class="led"><i></i>${type === "in" ? "참가" : "불참"}</span></button>`).join("")}</div>` : ""}</div>`).join("")}
       </section>`;
     };
@@ -1181,7 +1194,7 @@ PAGES.draft = {
 };
 function chipHtml(p, inTeam) {
   return `<div class="chip${draft.sel === p.id ? " sel" : ""}" draggable="true" data-chip="${esc(p.id)}" tabindex="0" role="button" aria-pressed="${draft.sel === p.id}" aria-label="${esc(p.name)} ${tierOf(p).k || "미배정"}">
-    ${avatar(p, "sm")}<span class="nm">${esc(p.name)}</span><span class="meta">${tierBadge(p)}<span class="num">(${costOf(p)})</span></span>
+    ${avatar(p, "sm")}<span class="nm">${esc(p.name)}</span>${igSub(p)}<span class="meta">${tierBadge(p)}<span class="num">(${costOf(p)})</span></span>
     ${inTeam ? `<button type="button" class="x" data-act="to-pool" data-id="${esc(p.id)}" aria-label="${esc(p.name)} 대기실로">${ic("x")}</button>` : ""}</div>`;
 }
 function moveTo(id, team) {
@@ -1420,7 +1433,7 @@ function openProfile(id) {
   const s = statFor(playerStats(), p);
   openModal({
     title: "선수 기록", wide: true,
-    body: `<div class="prof-top">${avatar(p, "lg")}<div style="min-width:0"><h2>${esc(p.name)}</h2><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${tierBadge(p)}<span class="muted">${costOf(p)} 코스트</span>${p.ingame ? `<span class="muted">· ${ic("pad")} ${esc(p.ingame)}</span>` : ""}</div>
+    body: `<div class="prof-top">${avatar(p, "lg")}<div style="min-width:0"><h2>${esc(p.name)}</h2>${igOf(p) ? `<div class="prof-ig">${ic("pad")} ${esc(igOf(p))}</div>` : ""}<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${tierBadge(p)}<span class="muted">${costOf(p)} 코스트</span></div>
         <a class="btn sm" style="margin-top:10px" href="${dakUrl(p)}" target="_blank" rel="noopener">${ic("ext")}dak.gg 전적 검색</a></div></div>
       <div class="prof-stats"><div class="prof-stat"><b>${s.games}</b><span>총 게임</span></div><div class="prof-stat"><b>${s.wins}</b><span>우승</span></div><div class="prof-stat"><b>${s.rate}%</b><span>승률</span></div><div class="prof-stat"><b>${s.avg == null ? "-" : s.avg.toFixed(1) + "위"}</b><span>평균 순위</span></div></div>
       <div><div class="stat-label" style="margin-bottom:8px">${ic("flag")}경기 기록</div>
@@ -1441,7 +1454,7 @@ PAGES.streamers = {
     const card = ({ p, s }) => `<div class="st-card">
       <button type="button" class="st-main" data-act="prof-open" data-id="${esc(p.id)}" aria-label="${esc(p.name)} 기록 보기">
         ${avatar(p)}${tierBadge(p)}
-        <span class="st-name">${esc(p.name)}</span><span class="st-ig">${ic("pad")}<span>${esc(p.ingame || "-")}</span></span>
+        <span class="st-name">${esc(p.name)}</span>${igOf(p) ? `<span class="st-ig" title="인게임 닉네임">${ic("pad")}<span>${esc(igOf(p))}</span></span>` : ""}
         <span class="st-stats"><span><b>${s.games}</b>게임</span><span><b>${s.wins}</b>우승</span><span><b>${s.rate}%</b>승률</span><span><b>${s.avg == null ? "-" : s.avg.toFixed(1)}</b>평균</span></span>
       </button>
       <a class="st-act" href="${dakUrl(p)}" target="_blank" rel="noopener">전적 검색 ${ic("ext")}</a></div>`;
@@ -1464,7 +1477,7 @@ PAGES.tiers = {
   title: () => `선수 티어 관리 <span class="sub">${app.players.length}명</span>`,
   controls: () => { const n = Object.keys(tierUI.pending).length; return `${n ? `<button class="btn ghost" type="button" data-act="tier-discard">변경 취소</button>` : ""}<button class="btn gold" type="button" data-act="tier-save"${n ? "" : " disabled"}>${ic("save")}변경사항 저장${n ? ` (${n})` : ""}</button>`; },
   view() {
-    const card = p => `<div class="pcard${tierUI.sel === p.id ? " sel" : ""}${p.id in tierUI.pending ? " changed" : ""}" draggable="true" data-pcard="${esc(p.id)}" tabindex="0" role="button" title="눌러서 선택 · 두 번 눌러 정보 수정">${avatar(p, "", pendingTier(p))}<span>${esc(p.name)}</span></div>`;
+    const card = p => `<div class="pcard${tierUI.sel === p.id ? " sel" : ""}${p.id in tierUI.pending ? " changed" : ""}" draggable="true" data-pcard="${esc(p.id)}" tabindex="0" role="button" title="눌러서 선택 · 두 번 눌러 정보 수정">${avatar(p, "", pendingTier(p))}<span class="pc-nm"><span>${esc(p.name)}</span>${igSub(p)}</span></div>`;
     const selP = tierUI.sel && app.pmap.get(tierUI.sel);
     const unassigned = app.players.filter(p => !TIER[pendingTier(p)]).sort(byName);
     return `
@@ -1480,7 +1493,7 @@ PAGES.tiers = {
           <div class="dropzone-del" data-tdrop="__delete">${ic("trash")}<span>선수 삭제 (여기로 드래그)</span></div>
           <section class="panel"><div class="panel-head"><h3>${ic("user")}미배정</h3><span class="num muted">${unassigned.length}</span></div>
             <div class="tier-body unassigned${selP ? " target" : ""}" data-tdrop="">${unassigned.map(card).join("") || `<span class="muted" style="font-size:12.5px;padding:6px">새로 등록한 선수가 여기에 나타납니다.</span>`}</div></section>
-          <p class="muted" style="font-size:12px;margin:0">카드를 끌어 티어를 바꾸고 <b>변경사항 저장</b>을 누르세요. 카드를 두 번 누르면 이름·인게임 닉네임·사진을 수정할 수 있습니다.</p>
+          <p class="muted" style="font-size:12px;margin:0">카드를 끌어 티어를 바꾸고 <b>변경사항 저장</b>을 누르세요. 카드를 두 번 누르면 이름·인게임 닉네임·티어를 수정할 수 있습니다.</p>
         </div>
       </div>`;
   },
@@ -1519,9 +1532,9 @@ function openEditPlayer(id) {
   editImg = { id: p.imageId || null, changed: false };
   openModal({
     title: "선수 정보 수정",
-    body: `<div class="photo-row"><span id="editAv">${avatar(p, "lg")}</span><div style="display:grid;gap:6px">
-        ${app.assets ? `<span class="btn sm file-btn">${ic("upload")}사진 올리기<input type="file" accept="image/*" id="editPhoto" data-ch="photo" aria-label="사진 올리기"></span>${p.imageId ? `<button class="btn ghost sm" type="button" data-act="photo-clear">사진 지우기</button>` : ""}` : `<span class="muted" style="font-size:12px">프로필 사진 기능은 꺼져 있습니다.</span>`}
-      </div></div>
+    body: `${app.assets ? `<div class="photo-row"><span id="editAv">${avatar(p, "lg")}</span><div style="display:grid;gap:6px">
+        <span class="btn sm file-btn">${ic("upload")}사진 올리기<input type="file" accept="image/*" id="editPhoto" data-ch="photo" aria-label="사진 올리기"></span>${p.imageId ? `<button class="btn ghost sm" type="button" data-act="photo-clear">사진 지우기</button>` : ""}
+      </div></div>` : ""}
       <label class="lbl">선수 닉네임<input class="field" id="editName" value="${esc(p.name)}" autocomplete="off"></label>
       <label class="lbl">인게임 닉네임 (전적 검색에 사용)<input class="field" id="editIngame" value="${esc(p.ingame || "")}" autocomplete="off"></label>
       <label class="lbl">티어<select class="field" id="editTier"><option value="">미배정</option>${TIERS.map(t => `<option value="${esc(t.k)}"${pendingTier(p) === t.k ? " selected" : ""}>${esc(t.k)} (${t.cost}코스트)</option>`).join("")}</select></label>`,
@@ -1887,7 +1900,7 @@ document.addEventListener("input", e => {
   if (k === "stq") stUI.q = e.target.value;
   render();
 });
-document.addEventListener("change", e => {
+function onChange(e) {
   const t = e.target;
   if (t.dataset.rule) {
     const r = editRules(), i = Number(t.dataset.i), f = t.dataset.rule;
@@ -1903,7 +1916,8 @@ document.addEventListener("change", e => {
   if (k === "photo") uploadPhoto(t.files && t.files[0]);
   if (k === "brandimg") loadBrandImage(t.files && t.files[0]);
   if (k === "backup") { const f = t.files && t.files[0]; t.value = ""; importBackup(f); }
-}, true);
+}
+document.addEventListener("change", onChange, true);
 document.addEventListener("change", e => {
   if (e.target.dataset && "keep" in e.target.dataset) keep[e.target.id] = e.target.value;
 });
@@ -2019,18 +2033,28 @@ async function startWithSession() {
   app.role = await myRole(); app.canWrite = app.role === "admin" || app.role === "host"; app.writeKnown = true;
   const h = (location.hash || "").replace("#", "");
   if (PAGES[h]) app.route = h; else if (h === "profile") app.route = "streamers";
-  subscribe(); render();
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") app.DB.refresh(); });
-  setInterval(() => app.DB.refresh(), 60000);
-  // 비밀번호가 바뀌어 세션이 끊겼는지 1분마다 확인 → 끊겼으면 로그인 화면으로
-  setInterval(async () => {
+  subscribe(); render(); app.DB.lastRefresh = Date.now();
+  const visible = () => document.visibilityState === "visible";
+  // 비밀번호가 바뀌어 세션이 끊겼는지 확인 → 끊겼으면 로그인 화면으로
+  const checkSession = async () => {
     try {
       const { error } = await SB.auth.getUser();
       if (error && (error.status === 401 || error.status === 403 || /session|not.?found|jwt|expired/i.test((error.code || "") + " " + (error.message || "")))) {
         await SB.auth.signOut({ scope: "local" }).catch(() => {}); location.reload();
       }
     } catch {}
-  }, 60000);
+  };
+  // 변경은 실시간으로 들어오므로, 전체 다시 받기는 안전장치로만:
+  // 화면을 보고 있을 때 5분마다 + 다른 탭에 있다가 돌아왔을 때(1분 이상 지났으면)
+  const FULL_REFRESH_MS = 5 * 60000;
+  document.addEventListener("visibilitychange", () => {
+    if (!visible()) return;
+    checkSession();
+    if (Date.now() - (app.DB.lastRefresh || 0) > 60000) app.DB.refresh();
+  });
+  setInterval(() => { if (visible() && Date.now() - (app.DB.lastRefresh || 0) >= FULL_REFRESH_MS - 1000) app.DB.refresh(); }, 30000);
+  // 로그인 확인은 화면을 보고 있을 때만 1분마다
+  setInterval(() => { if (visible()) checkSession(); }, 60000);
 }
 /* ── 로그인 보호: 연속 실패 시 대기, (선택) Cloudflare Turnstile 보안 확인 ── */
 const loginGuard = {
